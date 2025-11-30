@@ -428,8 +428,8 @@ function App() {
 
     if (isCorrect) {
       playCorrectSound();
-      setScore(prev => prev + 15);
-      setFeedback({ correct: true, message: 'Correct! +15 points' });
+      setScore(prev => prev + 1);
+      setFeedback({ correct: true, message: 'Correct! +1 point' });
       setHighlightedCountry({ code: currentQuestion.code, correct: true });
       setStreak(prev => {
         const newStreak = prev + 1;
@@ -473,8 +473,8 @@ function App() {
 
     if (isCorrect) {
       playCorrectSound();
-      setScore(prev => prev + 15);
-      setFeedback({ correct: true, message: 'Correct! +15 points' });
+      setScore(prev => prev + 1);
+      setFeedback({ correct: true, message: 'Correct! +1 point' });
       setStreak(prev => {
         const newStreak = prev + 1;
         if (newStreak > bestStreak) setBestStreak(newStreak);
@@ -508,8 +508,8 @@ function App() {
 
     if (isCorrect) {
       playCorrectSound();
-      setScore(prev => prev + 15);
-      setFeedback({ correct: true, message: 'Correct! +15 points' });
+      setScore(prev => prev + 1);
+      setFeedback({ correct: true, message: 'Correct! +1 point' });
       setStreak(prev => {
         const newStreak = prev + 1;
         if (newStreak > bestStreak) setBestStreak(newStreak);
@@ -615,7 +615,7 @@ function App() {
               <p style={{ marginBottom: '0.5rem' }}>🏛️ <strong>Capitals:</strong> Match capitals to countries</p>
               <p style={{ marginBottom: '0.5rem' }}>🚩 <strong>Flags:</strong> Identify country flags</p>
             </div>
-            <p style={{ color: '#7dd3fc', fontSize: '0.75rem', marginTop: '0.75rem' }}>15 points per correct answer!</p>
+            <p style={{ color: '#7dd3fc', fontSize: '0.75rem', marginTop: '0.75rem' }}>1 point per correct answer!</p>
           </div>
 
           <button
@@ -950,7 +950,7 @@ function App() {
 
   // COMPLETE SCREEN
   if (gameState === 'complete') {
-    const maxPossible = totalQuestions * 15;
+    const maxPossible = totalQuestions;
     const percentage = totalQuestions > 0 ? Math.round((score / maxPossible) * 100) : 0;
     const continent = getCurrentContinent();
     const gameType = gameTypes[selectedGameType];
