@@ -292,6 +292,7 @@ function App() {
   const [streak, setStreak] = useState(0);
   const [bestStreak, setBestStreak] = useState(0);
   const [mistakes, setMistakes] = useState([]);
+  const [missedCountries, setMissedCountries] = useState([]);
 
   const audioContextRef = useRef(null);
 
@@ -329,14 +330,26 @@ function App() {
   const getCurrentContinent = () => continents[continentOrder[currentContinent]];
 
   const generateQuestion = () => {
+    const difficulty = difficultyLevels[selectedDifficulty];
+    const isEasyCountriesGame = selectedGameType === 0 && difficulty.id === 'easy';
     const availableCountries = gameCountries.filter(c => !usedCountries.includes(c.code));
-    
-    if (availableCountries.length === 0) {
+
+    let candidateCountries = availableCountries;
+
+    // In easy mode countries, prioritize asking about previously missed countries
+    if (isEasyCountriesGame && missedCountries.length > 0) {
+      const retryCountries = availableCountries.filter(c => missedCountries.includes(c.code));
+      if (retryCountries.length > 0) {
+        candidateCountries = retryCountries;
+      }
+    }
+
+    if (candidateCountries.length === 0) {
       setGameState('complete');
       return;
     }
 
-    const randomCountry = availableCountries[Math.floor(Math.random() * availableCountries.length)];
+    const randomCountry = candidateCountries[Math.floor(Math.random() * candidateCountries.length)];
     setCurrentQuestion(randomCountry);
     setHighlightedCountry(null);
 
@@ -399,6 +412,7 @@ function App() {
     setStreak(0);
     setBestStreak(0);
     setMistakes([]);
+    setMissedCountries([]);
     setGameState('playing');
   };
 
@@ -422,15 +436,21 @@ function App() {
 
   const handleCountryClick = (geo) => {
     if (selectedGameType !== 0 || feedback || !currentQuestion) return;
-    
+
     const clickedId = geo.id;
     const isCorrect = clickedId === currentQuestion.code;
+    const difficulty = difficultyLevels[selectedDifficulty];
+    const isEasyCountriesGame = selectedGameType === 0 && difficulty.id === 'easy';
 
     if (isCorrect) {
       playCorrectSound();
       setScore(prev => prev + 1);
       setFeedback({ correct: true, message: 'Correct! +1 point' });
       setHighlightedCountry({ code: currentQuestion.code, correct: true });
+      if (isEasyCountriesGame && missedCountries.includes(currentQuestion.code)) {
+        setMissedCountries(prev => prev.filter(code => code !== currentQuestion.code));
+      }
+      setUsedCountries(prev => [...prev, currentQuestion.code]);
       setStreak(prev => {
         const newStreak = prev + 1;
         if (newStreak > bestStreak) setBestStreak(newStreak);
@@ -448,16 +468,24 @@ function App() {
       });
       setHighlightedCountry({ code: currentQuestion.code, correct: false, clickedCode: clickedId });
       setStreak(0);
-      setMistakes(prev => [...prev, { 
-        country: currentQuestion, 
+      setMistakes(prev => [...prev, {
+        country: currentQuestion,
         yourAnswer: clickedName,
         type: 'location'
       }]);
+      if (isEasyCountriesGame && !missedCountries.includes(currentQuestion.code)) {
+        setMissedCountries(prev => [...prev, currentQuestion.code]);
+      }
+      if (!isEasyCountriesGame) {
+        setUsedCountries(prev => [...prev, currentQuestion.code]);
+        setQuestionsInRound(prev => prev + 1);
+      }
     }
 
-    setUsedCountries(prev => [...prev, currentQuestion.code]);
     setTotalQuestions(prev => prev + 1);
-    setQuestionsInRound(prev => prev + 1);
+    if (isCorrect) {
+      setQuestionsInRound(prev => prev + 1);
+    }
 
     setTimeout(() => {
       setFeedback(null);
