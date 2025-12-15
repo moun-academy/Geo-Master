@@ -331,13 +331,13 @@ function App() {
 
   const generateQuestion = () => {
     const difficulty = difficultyLevels[selectedDifficulty];
-    const isEasyCountriesGame = selectedGameType === 0 && difficulty.id === 'easy';
+    const isCountriesGame = selectedGameType === 0;
     const availableCountries = gameCountries.filter(c => !usedCountries.includes(c.code));
 
     let candidateCountries = availableCountries;
 
-    // In easy mode countries, prioritize asking about previously missed countries
-    if (isEasyCountriesGame && missedCountries.length > 0) {
+    // In countries game, prioritize asking about previously missed countries
+    if (isCountriesGame && missedCountries.length > 0) {
       const retryCountries = availableCountries.filter(c => missedCountries.includes(c.code));
       if (retryCountries.length > 0) {
         candidateCountries = retryCountries;
@@ -439,15 +439,15 @@ function App() {
 
     const clickedId = geo.id;
     const isCorrect = clickedId === currentQuestion.code;
-    const difficulty = difficultyLevels[selectedDifficulty];
-    const isEasyCountriesGame = selectedGameType === 0 && difficulty.id === 'easy';
+    const isCountriesGame = selectedGameType === 0;
 
     if (isCorrect) {
       playCorrectSound();
       setScore(prev => prev + 1);
       setFeedback({ correct: true, message: 'Correct! +1 point' });
       setHighlightedCountry({ code: currentQuestion.code, correct: true });
-      if (isEasyCountriesGame && missedCountries.includes(currentQuestion.code)) {
+      // Remove from missed countries when answered correctly
+      if (missedCountries.includes(currentQuestion.code)) {
         setMissedCountries(prev => prev.filter(code => code !== currentQuestion.code));
       }
       setUsedCountries(prev => [...prev, currentQuestion.code]);
@@ -456,15 +456,16 @@ function App() {
         if (newStreak > bestStreak) setBestStreak(newStreak);
         return newStreak;
       });
+      setQuestionsInRound(prev => prev + 1);
     } else {
       // Find the name of the country that was clicked
       const continent = getCurrentContinent();
       const clickedCountry = continent.countries.find(c => c.code === clickedId);
       const clickedName = clickedCountry ? clickedCountry.name : 'that country';
-      
-      setFeedback({ 
-        correct: false, 
-        message: `Wrong! You clicked ${clickedName}. ${currentQuestion.name} is highlighted in green.` 
+
+      setFeedback({
+        correct: false,
+        message: `Wrong! You clicked ${clickedName}. ${currentQuestion.name} is highlighted in green.`
       });
       setHighlightedCountry({ code: currentQuestion.code, correct: false, clickedCode: clickedId });
       setStreak(0);
@@ -473,19 +474,14 @@ function App() {
         yourAnswer: clickedName,
         type: 'location'
       }]);
-      if (isEasyCountriesGame && !missedCountries.includes(currentQuestion.code)) {
+      // Add to missed countries when answered incorrectly
+      if (!missedCountries.includes(currentQuestion.code)) {
         setMissedCountries(prev => [...prev, currentQuestion.code]);
       }
-      if (!isEasyCountriesGame) {
-        setUsedCountries(prev => [...prev, currentQuestion.code]);
-        setQuestionsInRound(prev => prev + 1);
-      }
+      // Don't mark as used so it can be asked again
     }
 
     setTotalQuestions(prev => prev + 1);
-    if (isCorrect) {
-      setQuestionsInRound(prev => prev + 1);
-    }
 
     setTimeout(() => {
       setFeedback(null);
@@ -1321,6 +1317,69 @@ function App() {
                 <span style={{ color: 'rgba(255,255,255,0.7)' }}>Other</span>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Missed Countries Section */}
+        {selectedGameType === 0 && missedCountries.length > 0 && (
+          <div style={{
+            background: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            borderRadius: '1rem',
+            padding: '1rem',
+            marginTop: '0.75rem'
+          }}>
+            <h3 style={{
+              color: 'white',
+              fontSize: '1rem',
+              fontWeight: 'bold',
+              marginBottom: '0.75rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              Practice These Countries ({missedCountries.length})
+            </h3>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+              gap: '0.5rem'
+            }}>
+              {missedCountries.map(code => {
+                const country = gameCountries.find(c => c.code === code);
+                if (!country) return null;
+                return (
+                  <div
+                    key={code}
+                    style={{
+                      background: 'rgba(255,255,255,0.1)',
+                      borderRadius: '0.5rem',
+                      padding: '0.5rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}
+                  >
+                    <img
+                      src={`https://flagcdn.com/w40/${country.flag}.png`}
+                      alt={country.name}
+                      style={{ width: '30px', borderRadius: '4px' }}
+                    />
+                    <span style={{ color: 'white', fontSize: '0.875rem', fontWeight: '500' }}>
+                      {country.name}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <p style={{
+              color: '#fca5a5',
+              fontSize: '0.75rem',
+              marginTop: '0.75rem',
+              marginBottom: 0
+            }}>
+              Keep playing until you get 100% correct!
+            </p>
           </div>
         )}
 
