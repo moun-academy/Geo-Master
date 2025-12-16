@@ -540,11 +540,15 @@ function App() {
         return newStreak;
       });
     } else {
-      setFeedback({ correct: false, message: `Wrong! That's the flag of ${currentQuestion.name}` });
+      setFeedback({
+        correct: false,
+        message: `Wrong! That's the flag of ${country.name}. We were looking for ${currentQuestion.name}.`
+      });
       setStreak(0);
-      setMistakes(prev => [...prev, { 
-        country: currentQuestion, 
+      setMistakes(prev => [...prev, {
+        country: currentQuestion,
         yourAnswer: country.name,
+        correctAnswer: currentQuestion.name,
         type: 'flag'
       }]);
     }
@@ -1138,7 +1142,7 @@ function App() {
                       )}
                       {mistake.type === 'flag' && (
                         <div style={{ color: '#fca5a5', fontSize: '0.875rem' }}>
-                          You said: {mistake.yourAnswer}
+                          You said: {mistake.yourAnswer} (correct: {mistake.correctAnswer})
                         </div>
                       )}
                     </div>
