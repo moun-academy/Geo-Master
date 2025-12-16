@@ -329,15 +329,13 @@ function App() {
 
   const getCurrentContinent = () => continents[continentOrder[currentContinent]];
 
-  const generateQuestion = () => {
-    const difficulty = difficultyLevels[selectedDifficulty];
-    const isCountriesGame = selectedGameType === 0;
+  const generateQuestion = useCallback(() => {
     const availableCountries = gameCountries.filter(c => !usedCountries.includes(c.code));
 
     let candidateCountries = availableCountries;
 
     // In countries game, prioritize asking about previously missed countries
-    if (isCountriesGame && missedCountries.length > 0) {
+    if (selectedGameType === 0 && missedCountries.length > 0) {
       const retryCountries = availableCountries.filter(c => missedCountries.includes(c.code));
       if (retryCountries.length > 0) {
         candidateCountries = retryCountries;
@@ -366,13 +364,13 @@ function App() {
       const options = [...shuffled, randomCountry].sort(() => Math.random() - 0.5);
       setFlagOptions(options);
     }
-  };
+  }, [gameCountries, usedCountries, missedCountries, selectedGameType]);
 
   useEffect(() => {
     if (gameState === 'playing' && !currentQuestion && gameCountries.length > 0) {
       generateQuestion();
     }
-  }, [gameState, currentQuestion, gameCountries]);
+  }, [gameState, currentQuestion, gameCountries, generateQuestion]);
 
   const startGame = () => {
     setGameState('selectGameType');
@@ -439,7 +437,6 @@ function App() {
 
     const clickedId = geo.id;
     const isCorrect = clickedId === currentQuestion.code;
-    const isCountriesGame = selectedGameType === 0;
 
     if (isCorrect) {
       playCorrectSound();
