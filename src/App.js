@@ -223,6 +223,63 @@ const continents = {
 
 const continentOrder = ['europe', 'asia', 'africa', 'northamerica', 'southamerica', 'oceania'];
 
+// Memory tips for tricky capitals
+const capitalHints = {
+  'Australia': 'Not Sydney! Think "Can-berra" can bear the title',
+  'Brazil': 'Not Rio! Brasília was purpose-built inland as capital',
+  'Turkey': 'Not Istanbul! Ankara sits in the heart of the country',
+  'Myanmar': 'Naypyidaw replaced Yangon as capital in 2006',
+  'Nigeria': 'Not Lagos! Abuja is a planned capital in the center',
+  'Tanzania': 'Not Dar es Salaam! Dodoma is the official capital',
+  'South Africa': 'Pretoria for admin — not Cape Town or Johannesburg',
+  'Switzerland': 'Not Zurich or Geneva! Bern keeps it neutral',
+  'Canada': 'Not Toronto! Ottawa sits on the Ontario-Quebec border',
+  'Morocco': 'Not Casablanca! Rabat sits on the Atlantic coast',
+  'India': 'New Delhi — the "New" part is key, built by the British',
+  'Pakistan': '"Islamabad" literally means "City of Islam"',
+  'Kazakhstan': '"Astana" means "capital" in Kazakh!',
+  'China': '"Beijing" means "Northern Capital" in Chinese',
+  'Japan': '"Tokyo" means "Eastern Capital" in Japanese',
+  'South Korea': '"Seoul" means "capital" in Korean',
+  'Ivory Coast': 'Not Abidjan! Yamoussoukro since 1983',
+  'Bolivia': '"La Paz" means "The Peace" in Spanish',
+  'Ecuador': 'Quito sits high in the Andes, near the equator',
+  'Belize': 'Not Belize City! Belmopan was built after a hurricane',
+  'Mongolia': '"Ulaanbaatar" means "Red Hero"',
+  'Madagascar': 'Antananarivo — the longest capital name to remember!',
+  'Belgium': 'Brussels = headquarters of the EU',
+  'Austria': 'Vienna = the city of classical music',
+  'Hungary': 'Budapest = Buda + Pest, two cities joined by a bridge',
+  'Slovakia': 'Bratislava — the "B" capital near Austria',
+  'Slovenia': 'Ljubljana — starts with the unusual "Lj"',
+  'Montenegro': 'Podgorica — "under the little hill" in Serbian',
+  'Sri Lanka': 'Colombo — think of Columbus',
+  'Burkina Faso': 'Ouagadougou — say "WAH-gah-DOO-goo"',
+  'Czech Republic': 'Prague — one of Europe\'s most visited cities',
+  'Greenland': 'Nuuk — short and sweet, like the arctic',
+  'New Zealand': 'Not Auckland! Wellington is on the North Island\'s south tip',
+  'Philippines': 'Manila — think "manila envelope"',
+  'Vietnam': 'Not Ho Chi Minh City! Hanoi is in the north',
+  'United States': 'Named after George Washington, the first president',
+};
+
+const getCapitalHint = (country) => {
+  if (capitalHints[country.name]) return capitalHints[country.name];
+
+  const cap = country.capital[0].toUpperCase();
+  const cn = country.name[0].toUpperCase();
+
+  if (cn === cap) {
+    return `Both start with "${cap}" — ${country.name} → ${country.capital}`;
+  }
+
+  if (country.capital.toLowerCase().includes(country.name.toLowerCase().slice(0, 3))) {
+    return `The capital contains the country's name — look for it in the options`;
+  }
+
+  return `The capital starts with the letter "${cap}"`;
+};
+
 const gameTypes = [
   { id: 'location', name: 'Countries', icon: '🗺️', description: 'Find countries on the map', instruction: 'Click on' },
   { id: 'capital', name: 'Capitals', icon: '🏛️', description: 'Match capitals to countries', instruction: 'What is the capital of' },
@@ -293,6 +350,7 @@ function App() {
   const [bestStreak, setBestStreak] = useState(0);
   const [mistakes, setMistakes] = useState([]);
   const [missedCountries, setMissedCountries] = useState([]);
+  const [showHint, setShowHint] = useState(false);
 
   const audioContextRef = useRef(null);
 
@@ -519,6 +577,7 @@ function App() {
     setTimeout(() => {
       setFeedback(null);
       setCurrentQuestion(null);
+      setShowHint(false);
     }, 1500);
   };
 
@@ -1408,6 +1467,40 @@ function App() {
                 {capital}
               </button>
             ))}
+          </div>
+        )}
+
+        {/* Memory Hint for Capitals */}
+        {selectedGameType === 1 && currentQuestion && (
+          <div style={{ marginTop: '0.75rem', textAlign: 'center' }}>
+            {!feedback && !showHint && (
+              <button
+                onClick={() => setShowHint(true)}
+                style={{
+                  background: 'none',
+                  border: '1px dashed rgba(251, 191, 36, 0.4)',
+                  color: 'rgba(251, 191, 36, 0.7)',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem'
+                }}
+              >
+                💡 Need a hint?
+              </button>
+            )}
+            {(showHint || (feedback && !feedback.correct)) && (
+              <div style={{
+                background: 'rgba(251, 191, 36, 0.1)',
+                border: '1px solid rgba(251, 191, 36, 0.25)',
+                borderRadius: '0.75rem',
+                padding: '0.75rem',
+                color: '#fbbf24',
+                fontSize: '0.875rem'
+              }}>
+                💡 {getCapitalHint(currentQuestion)}
+              </div>
+            )}
           </div>
         )}
 
