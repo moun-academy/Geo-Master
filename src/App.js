@@ -296,18 +296,58 @@ function App() {
 
   const audioContextRef = useRef(null);
 
-  const playCorrectSound = useCallback(() => {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
+  const [muted, setMuted] = useState(() => {
+    try {
+      return localStorage.getItem('geomaster_muted') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const mutedRef = useRef(muted);
+  useEffect(() => {
+    mutedRef.current = muted;
+    try {
+      localStorage.setItem('geomaster_muted', String(muted));
+    } catch {
+      /* ignore storage errors (e.g. private mode) */
+    }
+  }, [muted]);
 
+  const [allTimeBestStreak, setAllTimeBestStreak] = useState(() => {
+    try {
+      return parseInt(localStorage.getItem('geomaster_best_streak') || '0', 10) || 0;
+    } catch {
+      return 0;
+    }
+  });
+  useEffect(() => {
+    if (bestStreak > allTimeBestStreak) {
+      setAllTimeBestStreak(bestStreak);
+      try {
+        localStorage.setItem('geomaster_best_streak', String(bestStreak));
+      } catch {
+        /* ignore storage errors */
+      }
+    }
+  }, [bestStreak, allTimeBestStreak]);
+
+  const getAudioContext = useCallback(() => {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return null;
     if (!audioContextRef.current) {
       audioContextRef.current = new AudioContext();
     }
-
     const ctx = audioContextRef.current;
     if (ctx.state === 'suspended') {
       ctx.resume();
     }
+    return ctx;
+  }, []);
+
+  const playCorrectSound = useCallback(() => {
+    if (mutedRef.current) return;
+    const ctx = getAudioContext();
+    if (!ctx) return;
 
     const now = ctx.currentTime;
 
@@ -334,6 +374,49 @@ function App() {
       oscillator.start(startTime);
       oscillator.stop(startTime + noteDuration + 0.02);
     });
+  }, [getAudioContext]);
+
+  const playWrongSound = useCallback(() => {
+    if (mutedRef.current) return;
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+
+    // Gentle low "descending" buzz for a wrong answer: G3 -> E3
+    const notes = [196.0, 164.8];
+    const noteDuration = 0.16;
+    const peakVolume = 0.09;
+
+    notes.forEach((frequency, index) => {
+      const startTime = now + index * 0.12;
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(frequency, startTime);
+
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(peakVolume, startTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + noteDuration);
+
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+
+      oscillator.start(startTime);
+      oscillator.stop(startTime + noteDuration + 0.02);
+    });
+  }, [getAudioContext]);
+
+  const vibrate = useCallback((pattern) => {
+    if (mutedRef.current) return;
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        navigator.vibrate(pattern);
+      } catch {
+        /* ignore unsupported */
+      }
+    }
   }, []);
 
   const getCurrentContinent = () => continents[continentOrder[currentContinent]];
@@ -449,6 +532,7 @@ function App() {
 
     if (isCorrect) {
       playCorrectSound();
+      vibrate(30);
       setScore(prev => prev + 1);
       setFeedback({ correct: true, message: 'Correct! +1 point' });
       setHighlightedCountry({ code: currentQuestion.code, correct: true });
@@ -474,6 +558,8 @@ function App() {
         message: `Wrong! You clicked ${clickedName}. ${currentQuestion.name} is highlighted in green.`
       });
       setHighlightedCountry({ code: currentQuestion.code, correct: false, clickedCode: clickedId });
+      playWrongSound();
+      vibrate([60, 40, 60]);
       setStreak(0);
       setMistakes(prev => [...prev, {
         country: currentQuestion,
@@ -503,6 +589,7 @@ function App() {
 
     if (isCorrect) {
       playCorrectSound();
+      vibrate(30);
       setScore(prev => prev + 1);
       setFeedback({ correct: true, message: 'Correct! +1 point' });
       setStreak(prev => {
@@ -512,6 +599,8 @@ function App() {
       });
     } else {
       setFeedback({ correct: false, message: `Wrong! The capital of ${currentQuestion.name} is ${currentQuestion.capital}` });
+      playWrongSound();
+      vibrate([60, 40, 60]);
       setStreak(0);
       setMistakes(prev => [...prev, { 
         country: currentQuestion, 
@@ -538,6 +627,7 @@ function App() {
 
     if (isCorrect) {
       playCorrectSound();
+      vibrate(30);
       setScore(prev => prev + 1);
       setFeedback({ correct: true, message: 'Correct! +1 point' });
       setStreak(prev => {
@@ -550,6 +640,8 @@ function App() {
         correct: false,
         message: `Wrong! That's the flag of ${country.name}. We were looking for ${currentQuestion.name}.`
       });
+      playWrongSound();
+      vibrate([60, 40, 60]);
       setStreak(0);
       setMistakes(prev => [...prev, {
         country: currentQuestion,
@@ -1035,6 +1127,15 @@ function App() {
                   <div style={{ color: '#c4b5fd', fontSize: '0.75rem' }}>Best Streak</div>
                 </div>
               </div>
+              {bestStreak > 0 && bestStreak >= allTimeBestStreak ? (
+                <p style={{ color: '#fbbf24', fontSize: '0.875rem', fontWeight: 'bold', marginTop: '0.75rem' }}>
+                  🎉 New personal record!
+                </p>
+              ) : (
+                <p style={{ color: '#c4b5fd', fontSize: '0.75rem', marginTop: '0.75rem' }}>
+                  All-time best streak: 🔥 {allTimeBestStreak}
+                </p>
+              )}
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -1189,8 +1290,26 @@ function App() {
           >
             ← Back
           </button>
-          
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {/* Mute Toggle */}
+            <button
+              onClick={() => setMuted(prev => !prev)}
+              title={muted ? 'Unmute sounds' : 'Mute sounds'}
+              aria-label={muted ? 'Unmute sounds' : 'Mute sounds'}
+              style={{
+                background: 'rgba(255,255,255,0.1)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.5rem',
+                padding: '0.375rem 0.625rem',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                lineHeight: 1
+              }}
+            >
+              {muted ? '🔇' : '🔊'}
+            </button>
             {/* Streak Counter */}
             {streak > 0 && (
               <div style={{ 
