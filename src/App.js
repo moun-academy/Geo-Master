@@ -309,22 +309,31 @@ function App() {
       ctx.resume();
     }
 
-    const oscillator = ctx.createOscillator();
-    const gain = ctx.createGain();
     const now = ctx.currentTime;
 
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(880, now);
+    // Pleasant ascending "success" chime: C6 -> E6 -> G6 (a major arpeggio)
+    const notes = [1046.5, 1318.5, 1568.0];
+    const noteDuration = 0.12;
+    const peakVolume = 0.08;
 
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.15, now + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+    notes.forEach((frequency, index) => {
+      const startTime = now + index * 0.09;
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
 
-    oscillator.connect(gain);
-    gain.connect(ctx.destination);
+      oscillator.type = 'triangle';
+      oscillator.frequency.setValueAtTime(frequency, startTime);
 
-    oscillator.start(now);
-    oscillator.stop(now + 0.25);
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(peakVolume, startTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + noteDuration);
+
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+
+      oscillator.start(startTime);
+      oscillator.stop(startTime + noteDuration + 0.02);
+    });
   }, []);
 
   const getCurrentContinent = () => continents[continentOrder[currentContinent]];
