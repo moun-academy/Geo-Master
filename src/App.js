@@ -679,6 +679,9 @@ function App() {
     if (selectedGameType !== 0 || feedback || !currentQuestion) return;
 
     const clickedId = geo.id;
+    const isInGame = gameCountries.some((country) => country.code === clickedId);
+    if (!isInGame) return;
+
     const isCorrect = clickedId === currentQuestion.code;
 
     if (isCorrect) {
@@ -1850,7 +1853,9 @@ function App() {
                             if (isInGame) setHoveredCountry(id);
                           }}
                           onMouseLeave={() => setHoveredCountry(null)}
-                          onClick={() => handleCountryClick(geo)}
+                          onClick={() => {
+                            if (isInGame) handleCountryClick(geo);
+                          }}
                         />
                       );
                     })
