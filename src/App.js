@@ -265,10 +265,14 @@ const continentColors = {
 };
 
 // Flag component using flagcdn.com
-const Flag = ({ countryCode, size = 80 }) => (
-  <img 
-    src={`https://flagcdn.com/w${size}/${countryCode}.png`}
-    srcSet={`https://flagcdn.com/w${size * 2}/${countryCode}.png 2x`}
+const Flag = ({ countryCode, size = 80 }) => {
+  const assetWidth = size <= 40 ? 40 : size <= 80 ? 80 : size <= 160 ? 160 : 320;
+  const retinaWidth = Math.min(assetWidth * 2, 640);
+
+  return (
+  <img
+    src={`https://flagcdn.com/w${assetWidth}/${countryCode}.png`}
+    srcSet={`https://flagcdn.com/w${retinaWidth}/${countryCode}.png 2x`}
     alt="Country flag"
     style={{ 
       width: size, 
@@ -277,7 +281,82 @@ const Flag = ({ countryCode, size = 80 }) => (
       boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
     }}
   />
-);
+  );
+};
+
+const CountryAnswerHistory = ({ entries }) => {
+  if (entries.length === 0) return null;
+
+  return (
+    <section style={{ marginTop: '0.75rem' }}>
+      <h2 style={{ color: 'white', fontSize: '1rem', marginBottom: '0.65rem' }}>
+        Round review ({entries.length})
+      </h2>
+      <div style={{ display: 'grid', gap: '0.75rem' }}>
+        {entries.map((entry, index) => (
+          <div key={entry.id} style={{
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: '1rem',
+            padding: '0.75rem'
+          }}>
+            <div style={{ color: '#94a3b8', fontSize: '0.75rem', marginBottom: '0.5rem' }}>
+              Answer {index + 1}
+            </div>
+            <div className={`country-insight-grid ${entry.correct ? 'single' : ''}`}>
+              {[
+                {
+                  label: entry.correct ? 'Correct' : 'You clicked',
+                  country: entry.clickedCountry,
+                  color: entry.correct ? '#22c55e' : '#ef4444'
+                },
+                ...(!entry.correct ? [{
+                  label: 'Correct answer',
+                  country: entry.correctCountry,
+                  color: '#22c55e'
+                }] : [])
+              ].map(({ label, country, color }) => (
+                <div
+                  key={label}
+                  style={{
+                    background: `${color}1f`,
+                    border: `1px solid ${color}80`,
+                    borderRadius: '0.85rem',
+                    padding: '0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.85rem',
+                    minWidth: 0
+                  }}
+                >
+                  <Flag countryCode={country.flag} size={64} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{
+                      color,
+                      fontSize: '0.7rem',
+                      fontWeight: 'bold',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      marginBottom: '0.2rem'
+                    }}>
+                      {label}
+                    </div>
+                    <div style={{ color: 'white', fontSize: '1rem', fontWeight: 'bold' }}>
+                      {country.name}
+                    </div>
+                    <div style={{ color: '#cbd5e1', fontSize: '0.85rem', marginTop: '0.15rem' }}>
+                      Capital: <strong style={{ color: 'white' }}>{country.capital}</strong>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+};
 
 const panelStyle = {
   background: 'rgba(255,255,255,0.1)',
@@ -360,7 +439,7 @@ function App() {
   const [settingsReturnState, setSettingsReturnState] = useState('menu');
   const [updateStatus, setUpdateStatus] = useState('');
   const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [countryInsight, setCountryInsight] = useState(null);
+  const [countryInsights, setCountryInsights] = useState([]);
 
   const audioContextRef = useRef(null);
 
@@ -567,7 +646,6 @@ function App() {
     }
 
     const randomCountry = candidateCountries[Math.floor(Math.random() * candidateCountries.length)];
-    setCountryInsight(null);
     setCurrentQuestion(randomCountry);
     setHighlightedCountry(null);
 
@@ -633,7 +711,7 @@ function App() {
     setBestStreak(0);
     setMistakes([]);
     setMissedCountries([]);
-    setCountryInsight(null);
+    setCountryInsights([]);
     setGameState('playing');
   };
 
@@ -661,7 +739,7 @@ function App() {
     setBestStreak(0);
     setMistakes([]);
     setMissedCountries([]);
-    setCountryInsight(null);
+    setCountryInsights([]);
     setReviewMode(true);
     setGameState('playing');
   };
@@ -689,11 +767,12 @@ function App() {
     const isCorrect = clickedId === currentQuestion.code;
 
     if (isCorrect) {
-      setCountryInsight({
+      setCountryInsights((entries) => [...entries, {
+        id: `${currentQuestion.code}-${Date.now()}`,
         correct: true,
         clickedCountry: currentQuestion,
         correctCountry: currentQuestion
-      });
+      }]);
       trackAnswer({
         correct: true,
         yourAnswer: currentQuestion.name,
@@ -719,11 +798,12 @@ function App() {
       // Find the name of the country that was clicked
       const clickedCountry = gameCountries.find(c => c.code === clickedId);
       const clickedName = clickedCountry ? clickedCountry.name : 'that country';
-      setCountryInsight({
+      setCountryInsights((entries) => [...entries, {
+        id: `${currentQuestion.code}-${Date.now()}`,
         correct: false,
         clickedCountry,
         correctCountry: currentQuestion
-      });
+      }]);
       trackAnswer({
         correct: false,
         yourAnswer: clickedName,
@@ -1574,6 +1654,7 @@ function App() {
                   setStreak(0);
                   setBestStreak(0);
                   setMistakes([]);
+                  setCountryInsights([]);
                   let countries = [...gameCountries].sort(() => Math.random() - 0.5);
                   if (!reviewMode) {
                     const continent = continents[continentOrder[currentContinent]];
@@ -1644,6 +1725,10 @@ function App() {
               </button>}
             </div>
           </div>
+
+          {selectedGameType === 0 && (
+            <CountryAnswerHistory entries={countryInsights} />
+          )}
 
           {/* Mistakes Review Section */}
           {mistakes.length > 0 && (
@@ -1895,58 +1980,8 @@ function App() {
           </div>
         )}
 
-        {selectedGameType === 0 && countryInsight && (
-          <div
-            className={`country-insight-grid ${countryInsight.correct ? 'single' : ''}`}
-            style={{ marginTop: '0.75rem' }}
-          >
-            {[
-              {
-                label: countryInsight.correct ? 'Correct' : 'You clicked',
-                country: countryInsight.clickedCountry,
-                color: countryInsight.correct ? '#22c55e' : '#ef4444'
-              },
-              ...(!countryInsight.correct ? [{
-                label: 'Correct answer',
-                country: countryInsight.correctCountry,
-                color: '#22c55e'
-              }] : [])
-            ].map(({ label, country, color }) => (
-              <div
-                key={label}
-                style={{
-                  background: `${color}1f`,
-                  border: `1px solid ${color}80`,
-                  borderRadius: '1rem',
-                  padding: '1rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  minWidth: 0
-                }}
-              >
-                <Flag countryCode={country.flag} size={64} />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{
-                    color,
-                    fontSize: '0.75rem',
-                    fontWeight: 'bold',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    marginBottom: '0.25rem'
-                  }}>
-                    {label}
-                  </div>
-                  <div style={{ color: 'white', fontSize: '1.1rem', fontWeight: 'bold' }}>
-                    {country.name}
-                  </div>
-                  <div style={{ color: '#cbd5e1', fontSize: '0.9rem', marginTop: '0.2rem' }}>
-                    Capital: <strong style={{ color: 'white' }}>{country.capital}</strong>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+        {selectedGameType === 0 && (
+          <CountryAnswerHistory entries={countryInsights} />
         )}
 
         {/* Missed Countries Section */}
