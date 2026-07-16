@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ComposableMap, Geographies, Geography, ZoomableGroup } from 'react-simple-maps';
 import './App.css';
+import { APP_LAST_UPDATED, APP_VERSION } from './appMeta';
+import {
+  loadProgress,
+  recordProgressAnswer,
+  resetProgress,
+  saveProgress
+} from './progress';
 
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
@@ -272,6 +279,61 @@ const Flag = ({ countryCode, size = 80 }) => (
   />
 );
 
+const panelStyle = {
+  background: 'rgba(255,255,255,0.1)',
+  backdropFilter: 'blur(10px)',
+  borderRadius: '1.5rem',
+  border: '1px solid rgba(255,255,255,0.2)'
+};
+
+const screenStyle = {
+  minHeight: '100vh',
+  background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #0d9488 100%)',
+  padding: '1rem'
+};
+
+const buttonStyle = {
+  border: 'none',
+  borderRadius: '0.75rem',
+  cursor: 'pointer',
+  color: 'white',
+  fontWeight: 'bold'
+};
+
+const accuracyFor = (bucket) => (
+  bucket?.answers ? Math.round((bucket.correct / bucket.answers) * 100) : 0
+);
+
+const formatUpdateDate = (value) => new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'full',
+  timeStyle: 'short'
+}).format(new Date(value));
+
+const SettingsGear = ({ onClick }) => (
+  <button
+    onClick={onClick}
+    title="Settings and updates"
+    aria-label="Open settings and updates"
+    style={{
+      position: 'fixed',
+      top: '1rem',
+      right: '1rem',
+      zIndex: 20,
+      width: '44px',
+      height: '44px',
+      borderRadius: '50%',
+      border: '1px solid rgba(255,255,255,0.3)',
+      background: 'rgba(15,23,42,0.75)',
+      color: 'white',
+      fontSize: '1.25rem',
+      cursor: 'pointer',
+      backdropFilter: 'blur(10px)'
+    }}
+  >
+    ⚙
+  </button>
+);
+
 function App() {
   const [gameState, setGameState] = useState('menu');
   const [selectedGameType, setSelectedGameType] = useState(0);
@@ -293,8 +355,17 @@ function App() {
   const [bestStreak, setBestStreak] = useState(0);
   const [mistakes, setMistakes] = useState([]);
   const [missedCountries, setMissedCountries] = useState([]);
+  const [progress, setProgress] = useState(loadProgress);
+  const [reviewMode, setReviewMode] = useState(false);
+  const [settingsReturnState, setSettingsReturnState] = useState('menu');
+  const [updateStatus, setUpdateStatus] = useState('');
+  const [updateAvailable, setUpdateAvailable] = useState(false);
 
   const audioContextRef = useRef(null);
+
+  useEffect(() => {
+    saveProgress(progress);
+  }, [progress]);
 
   const [muted, setMuted] = useState(() => {
     try {
@@ -330,6 +401,61 @@ function App() {
       }
     }
   }, [bestStreak, allTimeBestStreak]);
+
+  const openSettings = () => {
+    setSettingsReturnState(gameState);
+    setUpdateStatus('');
+    setGameState('settings');
+  };
+
+  const checkForUpdates = async () => {
+    setUpdateStatus('Checking for updates...');
+    setUpdateAvailable(false);
+
+    try {
+      const response = await fetch(`${process.env.PUBLIC_URL}/version.json?${Date.now()}`, {
+        cache: 'no-store'
+      });
+      if (!response.ok) throw new Error('Version check failed');
+      const latest = await response.json();
+
+      if (latest.version !== APP_VERSION) {
+        setUpdateAvailable(true);
+        setUpdateStatus(`Version ${latest.version} is ready to install.`);
+      } else {
+        setUpdateStatus('You already have the latest version.');
+      }
+    } catch {
+      setUpdateStatus('Could not check right now. Please try again when you are online.');
+    }
+  };
+
+  const installUpdate = async () => {
+    setUpdateStatus('Installing the latest version...');
+    try {
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.getRegistration();
+        await registration?.update();
+        const worker = registration?.waiting || registration?.installing;
+        worker?.postMessage({ type: 'SKIP_WAITING' });
+      }
+    } finally {
+      window.location.reload();
+    }
+  };
+
+  const trackAnswer = ({ correct, yourAnswer, correctAnswer }) => {
+    const type = gameTypes[selectedGameType].id;
+    const continent = continentOrder[currentContinent];
+    setProgress((previous) => recordProgressAnswer(previous, {
+      correct,
+      type,
+      continent,
+      country: currentQuestion,
+      yourAnswer,
+      correctAnswer
+    }));
+  };
 
   const getAudioContext = useCallback(() => {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -465,6 +591,7 @@ function App() {
   }, [gameState, currentQuestion, gameCountries, generateQuestion]);
 
   const startGame = () => {
+    setReviewMode(false);
     setGameState('selectGameType');
   };
 
@@ -479,6 +606,7 @@ function App() {
   };
 
   const selectContinent = (index) => {
+    setReviewMode(false);
     setCurrentContinent(index);
     
     // Get countries based on difficulty
@@ -506,7 +634,36 @@ function App() {
     setGameState('playing');
   };
 
+  const startMistakeReview = (type, continentKey) => {
+    const typeIndex = gameTypes.findIndex((gameType) => gameType.id === type);
+    const continentIndex = continentOrder.indexOf(continentKey);
+    const reviewItems = Object.values(progress.mistakeBank).filter(
+      (item) => item.type === type && item.continent === continentKey
+    );
+    const countryCodes = new Set(reviewItems.map((item) => item.country.code));
+    const countries = continents[continentKey].countries.filter((country) => countryCodes.has(country.code));
+
+    if (typeIndex < 0 || continentIndex < 0 || countries.length === 0) return;
+
+    setSelectedGameType(typeIndex);
+    setCurrentContinent(continentIndex);
+    setGameCountries(countries);
+    setScore(0);
+    setTotalQuestions(0);
+    setQuestionsInRound(0);
+    setUsedCountries([]);
+    setCurrentQuestion(null);
+    setFeedback(null);
+    setStreak(0);
+    setBestStreak(0);
+    setMistakes([]);
+    setMissedCountries([]);
+    setReviewMode(true);
+    setGameState('playing');
+  };
+
   const backToMenu = () => {
+    setReviewMode(false);
     setGameState('menu');
   };
 
@@ -518,12 +675,6 @@ function App() {
     setGameState('selectDifficulty');
   };
 
-  const backToContinentSelect = () => {
-    setGameState('selectContinent');
-    setCurrentQuestion(null);
-    setFeedback(null);
-  };
-
   const handleCountryClick = (geo) => {
     if (selectedGameType !== 0 || feedback || !currentQuestion) return;
 
@@ -531,6 +682,11 @@ function App() {
     const isCorrect = clickedId === currentQuestion.code;
 
     if (isCorrect) {
+      trackAnswer({
+        correct: true,
+        yourAnswer: currentQuestion.name,
+        correctAnswer: currentQuestion.name
+      });
       playCorrectSound();
       vibrate(30);
       setScore(prev => prev + 1);
@@ -552,6 +708,11 @@ function App() {
       const continent = getCurrentContinent();
       const clickedCountry = continent.countries.find(c => c.code === clickedId);
       const clickedName = clickedCountry ? clickedCountry.name : 'that country';
+      trackAnswer({
+        correct: false,
+        yourAnswer: clickedName,
+        correctAnswer: currentQuestion.name
+      });
 
       setFeedback({
         correct: false,
@@ -588,6 +749,11 @@ function App() {
     const isCorrect = capital === currentQuestion.capital;
 
     if (isCorrect) {
+      trackAnswer({
+        correct: true,
+        yourAnswer: capital,
+        correctAnswer: currentQuestion.capital
+      });
       playCorrectSound();
       vibrate(30);
       setScore(prev => prev + 1);
@@ -598,6 +764,11 @@ function App() {
         return newStreak;
       });
     } else {
+      trackAnswer({
+        correct: false,
+        yourAnswer: capital,
+        correctAnswer: currentQuestion.capital
+      });
       setFeedback({ correct: false, message: `Wrong! The capital of ${currentQuestion.name} is ${currentQuestion.capital}` });
       playWrongSound();
       vibrate([60, 40, 60]);
@@ -626,6 +797,11 @@ function App() {
     const isCorrect = country.code === currentQuestion.code;
 
     if (isCorrect) {
+      trackAnswer({
+        correct: true,
+        yourAnswer: country.name,
+        correctAnswer: currentQuestion.name
+      });
       playCorrectSound();
       vibrate(30);
       setScore(prev => prev + 1);
@@ -636,6 +812,11 @@ function App() {
         return newStreak;
       });
     } else {
+      trackAnswer({
+        correct: false,
+        yourAnswer: country.name,
+        correctAnswer: currentQuestion.name
+      });
       setFeedback({
         correct: false,
         message: `Wrong! That's the flag of ${country.name}. We were looking for ${currentQuestion.name}.`
@@ -703,6 +884,207 @@ function App() {
     return continentColors[continentKey] || '#374151';
   };
 
+  if (gameState === 'settings') {
+    return (
+      <div style={screenStyle}>
+        <div style={{ ...panelStyle, maxWidth: '560px', margin: '3rem auto', padding: '2rem' }}>
+          <h1 style={{ color: 'white', marginBottom: '0.5rem' }}>Settings</h1>
+          <p style={{ color: '#93c5fd', marginBottom: '1.5rem' }}>Sound, app information, and updates.</p>
+
+          <div style={{ display: 'grid', gap: '1rem' }}>
+            <div style={{ background: 'rgba(255,255,255,0.08)', padding: '1rem', borderRadius: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                <div>
+                  <div style={{ color: 'white', fontWeight: 'bold' }}>Sound and vibration</div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.875rem' }}>
+                    {muted ? 'Currently muted' : 'Currently enabled'}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setMuted((value) => !value)}
+                  style={{ ...buttonStyle, padding: '0.75rem 1rem', background: '#2563eb' }}
+                >
+                  {muted ? 'Turn on' : 'Mute'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.08)', padding: '1rem', borderRadius: '1rem' }}>
+              <div style={{ color: 'white', fontWeight: 'bold', marginBottom: '0.5rem' }}>App version</div>
+              <div style={{ color: '#bfdbfe' }}>GeoMaster {APP_VERSION}</div>
+              <div style={{ color: '#94a3b8', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+                Last updated {formatUpdateDate(APP_LAST_UPDATED)}
+              </div>
+              <button
+                onClick={checkForUpdates}
+                style={{
+                  ...buttonStyle,
+                  width: '100%',
+                  padding: '0.9rem',
+                  marginTop: '1rem',
+                  background: 'linear-gradient(90deg, #14b8a6, #10b981)'
+                }}
+              >
+                Check for latest update
+              </button>
+              {updateStatus && (
+                <div style={{
+                  color: updateAvailable ? '#fde047' : '#cbd5e1',
+                  fontSize: '0.875rem',
+                  marginTop: '0.75rem',
+                  textAlign: 'center'
+                }}>
+                  {updateStatus}
+                </div>
+              )}
+              {updateAvailable && (
+                <button
+                  onClick={installUpdate}
+                  style={{ ...buttonStyle, width: '100%', padding: '0.9rem', marginTop: '0.75rem', background: '#7c3aed' }}
+                >
+                  Install update
+                </button>
+              )}
+            </div>
+
+            <button
+              onClick={() => setGameState(settingsReturnState)}
+              style={{ ...buttonStyle, padding: '0.9rem', background: 'rgba(255,255,255,0.15)' }}
+            >
+              Back
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (gameState === 'progress') {
+    const mistakeGroups = Object.values(progress.mistakeBank).reduce((groups, item) => {
+      const key = `${item.type}:${item.continent}`;
+      if (!groups[key]) groups[key] = { type: item.type, continent: item.continent, items: [] };
+      groups[key].items.push(item);
+      return groups;
+    }, {});
+    const masteredCountries = Object.values(progress.countries).filter(
+      (country) => country.answers >= 3 && accuracyFor(country) >= 80
+    ).length;
+    const modeEntries = gameTypes.map((type) => ({
+      ...type,
+      stats: progress.byMode[type.id]
+    }));
+
+    return (
+      <div style={screenStyle}>
+        <SettingsGear onClick={openSettings} />
+        <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', margin: '1rem 0 1.5rem' }}>
+            <h1 style={{ color: 'white', fontSize: '2rem' }}>Your Progress</h1>
+            <p style={{ color: '#93c5fd' }}>Your results are saved on this device.</p>
+          </div>
+
+          <div className="progress-stat-grid">
+            {[
+              ['Answers', progress.totalAnswers],
+              ['Accuracy', `${accuracyFor({ answers: progress.totalAnswers, correct: progress.totalCorrect })}%`],
+              ['Mastered', masteredCountries],
+              ['To review', Object.keys(progress.mistakeBank).length]
+            ].map(([label, value]) => (
+              <div key={label} style={{ ...panelStyle, padding: '1rem', textAlign: 'center' }}>
+                <div style={{ color: '#fde047', fontSize: '1.75rem', fontWeight: 'bold' }}>{value}</div>
+                <div style={{ color: '#bfdbfe', fontSize: '0.8rem' }}>{label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ ...panelStyle, padding: '1.25rem', marginTop: '1rem' }}>
+            <h2 style={{ color: 'white', fontSize: '1.2rem', marginBottom: '1rem' }}>Accuracy by mode</h2>
+            <div style={{ display: 'grid', gap: '0.75rem' }}>
+              {modeEntries.map((type) => (
+                <div key={type.id}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e2e8f0', marginBottom: '0.35rem' }}>
+                    <span>{type.icon} {type.name}</span>
+                    <span>{accuracyFor(type.stats)}% · {type.stats?.answers || 0} answers</span>
+                  </div>
+                  <div style={{ height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '999px', overflow: 'hidden' }}>
+                    <div style={{ width: `${accuracyFor(type.stats)}%`, height: '100%', background: '#22c55e' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ ...panelStyle, padding: '1.25rem', marginTop: '1rem' }}>
+            <h2 style={{ color: 'white', fontSize: '1.2rem', marginBottom: '0.4rem' }}>Mistake review</h2>
+            <p style={{ color: '#94a3b8', fontSize: '0.875rem', marginBottom: '1rem' }}>
+              Correct answers remove countries from this list.
+            </p>
+            {Object.keys(mistakeGroups).length === 0 ? (
+              <div style={{ color: '#86efac', padding: '1rem 0' }}>Nothing to review yet. Nice work.</div>
+            ) : (
+              <div style={{ display: 'grid', gap: '0.75rem' }}>
+                {Object.values(mistakeGroups).map((group) => {
+                  const type = gameTypes.find((item) => item.id === group.type);
+                  return (
+                    <div
+                      key={`${group.type}:${group.continent}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '1rem',
+                        background: 'rgba(239,68,68,0.1)',
+                        border: '1px solid rgba(239,68,68,0.25)',
+                        borderRadius: '0.9rem',
+                        padding: '0.9rem'
+                      }}
+                    >
+                      <div>
+                        <div style={{ color: 'white', fontWeight: 'bold' }}>
+                          {type?.icon} {type?.name} · {continents[group.continent].name}
+                        </div>
+                        <div style={{ color: '#fca5a5', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                          {group.items.map((item) => item.country.name).join(', ')}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => startMistakeReview(group.type, group.continent)}
+                        style={{ ...buttonStyle, flexShrink: 0, padding: '0.7rem 0.9rem', background: '#dc2626' }}
+                      >
+                        Practice {group.items.length}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.75rem', margin: '1rem 0', flexWrap: 'wrap' }}>
+            <button
+              onClick={backToMenu}
+              style={{ ...buttonStyle, flex: 1, minWidth: '180px', padding: '0.9rem', background: '#2563eb' }}
+            >
+              Back to Home
+            </button>
+            {progress.totalAnswers > 0 && (
+              <button
+                onClick={() => {
+                  if (window.confirm('Reset all saved progress and mistakes?')) {
+                    setProgress(resetProgress());
+                  }
+                }}
+                style={{ ...buttonStyle, padding: '0.9rem', background: 'rgba(239,68,68,0.25)', border: '1px solid rgba(248,113,113,0.5)' }}
+              >
+                Reset progress
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // MENU SCREEN
   if (gameState === 'menu') {
     return (
@@ -714,6 +1096,7 @@ function App() {
         justifyContent: 'center',
         padding: '1rem'
       }}>
+        <SettingsGear onClick={openSettings} />
         <div style={{
           background: 'rgba(255,255,255,0.1)',
           backdropFilter: 'blur(10px)',
@@ -763,6 +1146,26 @@ function App() {
           >
             Start Game
           </button>
+          <button
+            onClick={() => setGameState('progress')}
+            style={{
+              width: '100%',
+              background: 'rgba(255,255,255,0.13)',
+              color: 'white',
+              fontWeight: 'bold',
+              padding: '0.9rem 1rem',
+              borderRadius: '0.75rem',
+              fontSize: '1rem',
+              border: '1px solid rgba(255,255,255,0.2)',
+              cursor: 'pointer',
+              marginTop: '0.75rem'
+            }}
+          >
+            View Progress
+            {Object.keys(progress.mistakeBank).length > 0 && (
+              <span style={{ color: '#fca5a5' }}> · {Object.keys(progress.mistakeBank).length} to review</span>
+            )}
+          </button>
         </div>
       </div>
     );
@@ -779,6 +1182,7 @@ function App() {
         justifyContent: 'center',
         padding: '1rem'
       }}>
+        <SettingsGear onClick={openSettings} />
         <div style={{
           background: 'rgba(255,255,255,0.1)',
           backdropFilter: 'blur(10px)',
@@ -856,6 +1260,7 @@ function App() {
         justifyContent: 'center',
         padding: '1rem'
       }}>
+        <SettingsGear onClick={openSettings} />
         <div style={{
           background: 'rgba(255,255,255,0.1)',
           backdropFilter: 'blur(10px)',
@@ -931,6 +1336,7 @@ function App() {
         background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #1e293b 100%)',
         padding: '1rem'
       }}>
+        <SettingsGear onClick={openSettings} />
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
           <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
             <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{selectedType.icon}</div>
@@ -1088,6 +1494,7 @@ function App() {
         padding: '1rem',
         overflowY: 'auto'
       }}>
+        <SettingsGear onClick={openSettings} />
         <div style={{ maxWidth: '500px', margin: '0 auto' }}>
           <div style={{
             background: 'rgba(255,255,255,0.1)',
@@ -1100,9 +1507,11 @@ function App() {
           }}>
             <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🏆</div>
             <h1 style={{ fontSize: '1.75rem', fontWeight: 'bold', color: 'white', marginBottom: '0.5rem' }}>
-              {continent.name} Complete!
+              {reviewMode ? 'Review Complete!' : `${continent.name} Complete!`}
             </h1>
-            <p style={{ color: '#e9d5ff', marginBottom: '1rem' }}>{gameType.name} Quiz</p>
+            <p style={{ color: '#e9d5ff', marginBottom: '1rem' }}>
+              {reviewMode ? `${gameType.name} mistake practice` : `${gameType.name} Quiz`}
+            </p>
             
             <div style={{
               background: 'rgba(255,255,255,0.1)',
@@ -1149,12 +1558,14 @@ function App() {
                   setStreak(0);
                   setBestStreak(0);
                   setMistakes([]);
-                  // Re-shuffle countries
-                  const continent = continents[continentOrder[currentContinent]];
-                  const difficulty = difficultyLevels[selectedDifficulty];
-                  let countries = [...continent.countries].sort(() => Math.random() - 0.5);
-                  if (difficulty.count && difficulty.count < countries.length) {
-                    countries = countries.slice(0, difficulty.count);
+                  let countries = [...gameCountries].sort(() => Math.random() - 0.5);
+                  if (!reviewMode) {
+                    const continent = continents[continentOrder[currentContinent]];
+                    const difficulty = difficultyLevels[selectedDifficulty];
+                    countries = [...continent.countries].sort(() => Math.random() - 0.5);
+                    if (difficulty.count && difficulty.count < countries.length) {
+                      countries = countries.slice(0, difficulty.count);
+                    }
                   }
                   setGameCountries(countries);
                   setGameState('playing');
@@ -1170,10 +1581,10 @@ function App() {
                   cursor: 'pointer'
                 }}
               >
-                Play Again
+                {reviewMode ? 'Review Again' : 'Play Again'}
               </button>
               <button
-                onClick={backToContinentSelect}
+                onClick={() => setGameState(reviewMode ? 'progress' : 'selectContinent')}
                 style={{
                   background: 'rgba(255,255,255,0.2)',
                   color: 'white',
@@ -1185,9 +1596,9 @@ function App() {
                   cursor: 'pointer'
                 }}
               >
-                Choose Another Continent
+                {reviewMode ? 'Back to Progress' : 'Choose Another Continent'}
               </button>
-              <button
+              {!reviewMode && <button
                 onClick={backToGameTypeSelect}
                 style={{
                   background: 'rgba(255,255,255,0.1)',
@@ -1200,7 +1611,21 @@ function App() {
                 }}
               >
                 Change Game Mode
-              </button>
+              </button>}
+              {!reviewMode && <button
+                onClick={() => setGameState('progress')}
+                style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  color: 'white',
+                  padding: '0.75rem',
+                  borderRadius: '0.75rem',
+                  fontSize: '0.875rem',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                View Progress
+              </button>}
             </div>
           </div>
 
@@ -1273,11 +1698,12 @@ function App() {
       background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #1e293b 100%)',
       padding: '0.5rem'
     }}>
+      <SettingsGear onClick={openSettings} />
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         {/* Header Stats */}
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.75rem' }}>
           <button
-            onClick={backToContinentSelect}
+            onClick={() => setGameState(reviewMode ? 'progress' : 'selectContinent')}
             style={{
               background: 'rgba(255,255,255,0.1)',
               color: 'white',
@@ -1329,7 +1755,9 @@ function App() {
           
           <div style={{ textAlign: 'center' }}>
             <div style={{ color: 'white', fontWeight: '600', fontSize: '0.875rem' }}>{continent.name}</div>
-            <div style={{ color: '#2dd4bf', fontSize: '0.75rem' }}>{gameType.name}</div>
+            <div style={{ color: '#2dd4bf', fontSize: '0.75rem' }}>
+              {reviewMode ? `${gameType.name} Review` : gameType.name}
+            </div>
           </div>
 
           <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '0.75rem', padding: '0.375rem 0.75rem' }}>
