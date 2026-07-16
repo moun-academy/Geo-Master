@@ -360,6 +360,7 @@ function App() {
   const [settingsReturnState, setSettingsReturnState] = useState('menu');
   const [updateStatus, setUpdateStatus] = useState('');
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [countryInsight, setCountryInsight] = useState(null);
 
   const audioContextRef = useRef(null);
 
@@ -566,6 +567,7 @@ function App() {
     }
 
     const randomCountry = candidateCountries[Math.floor(Math.random() * candidateCountries.length)];
+    setCountryInsight(null);
     setCurrentQuestion(randomCountry);
     setHighlightedCountry(null);
 
@@ -631,6 +633,7 @@ function App() {
     setBestStreak(0);
     setMistakes([]);
     setMissedCountries([]);
+    setCountryInsight(null);
     setGameState('playing');
   };
 
@@ -658,6 +661,7 @@ function App() {
     setBestStreak(0);
     setMistakes([]);
     setMissedCountries([]);
+    setCountryInsight(null);
     setReviewMode(true);
     setGameState('playing');
   };
@@ -685,6 +689,11 @@ function App() {
     const isCorrect = clickedId === currentQuestion.code;
 
     if (isCorrect) {
+      setCountryInsight({
+        correct: true,
+        clickedCountry: currentQuestion,
+        correctCountry: currentQuestion
+      });
       trackAnswer({
         correct: true,
         yourAnswer: currentQuestion.name,
@@ -708,9 +717,13 @@ function App() {
       setQuestionsInRound(prev => prev + 1);
     } else {
       // Find the name of the country that was clicked
-      const continent = getCurrentContinent();
-      const clickedCountry = continent.countries.find(c => c.code === clickedId);
+      const clickedCountry = gameCountries.find(c => c.code === clickedId);
       const clickedName = clickedCountry ? clickedCountry.name : 'that country';
+      setCountryInsight({
+        correct: false,
+        clickedCountry,
+        correctCountry: currentQuestion
+      });
       trackAnswer({
         correct: false,
         yourAnswer: clickedName,
@@ -1879,6 +1892,60 @@ function App() {
                 <span style={{ color: 'rgba(255,255,255,0.7)' }}>Other</span>
               </div>
             </div>
+          </div>
+        )}
+
+        {selectedGameType === 0 && countryInsight && (
+          <div
+            className={`country-insight-grid ${countryInsight.correct ? 'single' : ''}`}
+            style={{ marginTop: '0.75rem' }}
+          >
+            {[
+              {
+                label: countryInsight.correct ? 'Correct' : 'You clicked',
+                country: countryInsight.clickedCountry,
+                color: countryInsight.correct ? '#22c55e' : '#ef4444'
+              },
+              ...(!countryInsight.correct ? [{
+                label: 'Correct answer',
+                country: countryInsight.correctCountry,
+                color: '#22c55e'
+              }] : [])
+            ].map(({ label, country, color }) => (
+              <div
+                key={label}
+                style={{
+                  background: `${color}1f`,
+                  border: `1px solid ${color}80`,
+                  borderRadius: '1rem',
+                  padding: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  minWidth: 0
+                }}
+              >
+                <Flag countryCode={country.flag} size={64} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{
+                    color,
+                    fontSize: '0.75rem',
+                    fontWeight: 'bold',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    marginBottom: '0.25rem'
+                  }}>
+                    {label}
+                  </div>
+                  <div style={{ color: 'white', fontSize: '1.1rem', fontWeight: 'bold' }}>
+                    {country.name}
+                  </div>
+                  <div style={{ color: '#cbd5e1', fontSize: '0.9rem', marginTop: '0.2rem' }}>
+                    Capital: <strong style={{ color: 'white' }}>{country.capital}</strong>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
