@@ -286,6 +286,9 @@ const Flag = ({ countryCode, size = 80 }) => {
 
 const CountryAnswerHistory = ({ entries }) => {
   if (entries.length === 0) return null;
+  const newestFirst = entries
+    .map((entry, index) => ({ ...entry, answerNumber: index + 1 }))
+    .reverse();
 
   return (
     <section style={{ marginTop: '0.75rem' }}>
@@ -293,7 +296,7 @@ const CountryAnswerHistory = ({ entries }) => {
         Round review ({entries.length})
       </h2>
       <div style={{ display: 'grid', gap: '0.75rem' }}>
-        {entries.map((entry, index) => (
+        {newestFirst.map((entry) => (
           <div key={entry.id} style={{
             background: 'rgba(255,255,255,0.06)',
             border: '1px solid rgba(255,255,255,0.12)',
@@ -301,7 +304,7 @@ const CountryAnswerHistory = ({ entries }) => {
             padding: '0.75rem'
           }}>
             <div style={{ color: '#94a3b8', fontSize: '0.75rem', marginBottom: '0.5rem' }}>
-              Answer {index + 1}
+              Answer {entry.answerNumber}
             </div>
             <div className={`country-insight-grid ${entry.correct ? 'single' : ''}`}>
               {[
